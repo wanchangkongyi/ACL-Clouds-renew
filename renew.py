@@ -10,10 +10,6 @@ def log(msg):
     print(f"[INFO] {msg}")
 
 def parse_expires_minutes(text):
-    """
-    解析剩余时间为分钟数
-    支持格式：'4h 46min' / '1h 30min' / '45min' / '2h'
-    """
     hours = re.search(r'(\d+)\s*h', text)
     mins  = re.search(r'(\d+)\s*min', text)
     total = 0
@@ -24,7 +20,8 @@ def parse_expires_minutes(text):
     return total
 
 with sync_playwright() as p:
-    browser = p.chromium.launch(headless=True)
+    # 关闭 headless，配合 xvfb 运行
+    browser = p.chromium.launch(headless=False)
     page = browser.new_page()
 
     # ============ 1. 登录 ============
@@ -32,7 +29,6 @@ with sync_playwright() as p:
     page.goto("https://dash.aclclouds.com/login", wait_until="networkidle")
     page.screenshot(path="00_before_login.png")
 
-    # 用顺序定位输入框，避免 type 选择器失效
     inputs = page.locator('input')
     inputs.nth(0).fill(username)
     inputs.nth(1).fill(password)
@@ -40,10 +36,8 @@ with sync_playwright() as p:
     # 点击自定义 checkbox
     checkbox = page.locator('div.auth-captcha-inner[role="checkbox"]')
     checkbox.click()
-    time.sleep(1)
-
-    # 等待勾选状态
-    page.wait_for_selector('div.auth-captcha-checkbox.checked', timeout=5000)
+    time.sleep(2)
+    page.screenshot(path="00_checkbox.png")
     log("验证勾选完成")
 
     # 点击登录按钮
@@ -89,9 +83,7 @@ with sync_playwright() as p:
         except Exception as e:
             log(f"无法读取剩余时间: {e}")
 
-        # --- 判断是否需要续期 ---
-        # 情况1：读取到剩余时间且 ≤120 分钟
-        # 情况2：读取失败（可能已关机到期），也尝试续期
+        # --- 续期 ---
         should_renew = (remaining is not None and remaining <= 120) or (remaining is None)
 
         if should_renew:
@@ -114,7 +106,7 @@ with sync_playwright() as p:
         else:
             log(f"剩余时间充足（{remaining}min），无需续期")
 
-        # --- 开机（每次都检查） ---
+        # --- 开机 ---
         log("检查开机状态...")
         try:
             start_btn = page.locator('button:has-text("Start")')
