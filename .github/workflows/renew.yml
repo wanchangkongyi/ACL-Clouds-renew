@@ -1,0 +1,43 @@
+name: ACLClouds Auto Renew
+on:
+  schedule:
+    - cron: '0 */5 * * *'
+  workflow_dispatch:
+
+jobs:
+  renew-job:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Cache Playwright
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}
+
+      - name: Install dependencies
+        run: |
+          pip install playwright
+          playwright install chromium
+
+      - name: Run Renew Script
+        env:
+          ACL_USERNAME: ${{ secrets.ACL_USERNAME }}
+          ACL_PASSWORD: ${{ secrets.ACL_PASSWORD }}
+        run: python renew.py
+
+      - name: Upload Screenshots
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Screenshots
+          path: "*.png"
+          retention-days: 3
