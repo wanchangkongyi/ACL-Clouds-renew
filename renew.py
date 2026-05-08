@@ -1,7 +1,6 @@
 import os
 import re
 import time
-import json
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
 
 cookies_str = os.environ.get("ACL_COOKIES", "")
@@ -20,7 +19,6 @@ def parse_expires_minutes(text):
     return total
 
 def parse_cookies(cookie_str):
-    """将 Cookie 字符串解析为 Playwright 格式"""
     cookies = []
     for item in cookie_str.split(";"):
         item = item.strip()
@@ -35,41 +33,41 @@ def parse_cookies(cookie_str):
     return cookies
 
 with sync_playwright() as p:
-    browser = p.chromium.launch(headless=True)  # 可以回到 headless 了
+    browser = p.chromium.launch(headless=True)
     context = browser.new_context()
 
-    # ============ 1. 注入 Cookie，跳过登录 ============
+    # ============ 1. 注入 Cookie ============
     log("注入 Cookie...")
     context.add_cookies(parse_cookies(cookies_str))
     page = context.new_page()
 
-    # 直接访问项目页，验证是否已登录
+    # ============ 2. 进入项目列表页 ============
+    log("正在进入项目页面...")
     page.goto("https://dash.aclclouds.com/projects", wait_until="networkidle")
     page.screenshot(path="01_projects.png")
-    log("Cookie 注入完成，已进入项目页")
 
-    # ============ 2. 收集项目链接 ============
-    project_links = page.locator('a[href*="/projects/"]').all()
+    # 收集所有 /server/ 链接
+    project_links = page.locator('a[href*="/server/"]').all()
     hrefs = []
     for link in project_links:
         href = link.get_attribute("href")
         if href and href not in hrefs:
             hrefs.append(href)
-    log(f"找到 {len(hrefs)} 个项目")
+    log(f"找到 {len(hrefs)} 个服务器")
 
     if len(hrefs) == 0:
-        log("未找到项目，Cookie 可能已过期")
+        log("未找到任何服务器，请检查 Cookie 是否有效")
         page.screenshot(path="error_no_projects.png")
         browser.close()
         exit(1)
 
-    # ============ 3. 逐个处理项目 ============
+    # ============ 3. 逐个处理服务器 ============
     for idx, href in enumerate(hrefs):
         url = href if href.startswith("http") else f"https://dash.aclclouds.com{href}"
-        log(f"--- 处理第 {idx+1} 个项目: {url} ---")
+        log(f"--- 处理第 {idx+1} 个服务器: {url} ---")
 
         page.goto(url, wait_until="networkidle")
-        page.screenshot(path=f"project_{idx+1}_01_enter.png")
+        page.screenshot(path=f"server_{idx+1}_01_enter.png")
 
         # --- 读取剩余时间 ---
         remaining = None
@@ -100,7 +98,7 @@ with sync_playwright() as p:
                     log("续期按钮不可见，未到续期窗口期")
             except PlaywrightTimeout:
                 log("续期操作超时")
-            page.screenshot(path=f"project_{idx+1}_02_after_renew.png")
+            page.screenshot(path=f"server_{idx+1}_02_after_renew.png")
         else:
             log(f"剩余时间充足（{remaining}min），无需续期")
 
@@ -121,8 +119,8 @@ with sync_playwright() as p:
         except PlaywrightTimeout:
             log("开机操作超时")
 
-        page.screenshot(path=f"project_{idx+1}_03_final.png")
+        page.screenshot(path=f"server_{idx+1}_03_final.png")
         time.sleep(2)
 
-    log("全部项目处理完成")
+    log("全部服务器处理完成")
     browser.close()
