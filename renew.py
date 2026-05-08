@@ -32,16 +32,17 @@ with sync_playwright() as p:
     page.goto("https://dash.aclclouds.com/login", wait_until="networkidle")
     page.screenshot(path="00_before_login.png")
 
-    # 填写邮箱和密码
-    page.fill('input[type="email"]', username)
-    page.fill('input[type="password"]', password)
+    # 用顺序定位输入框，避免 type 选择器失效
+    inputs = page.locator('input')
+    inputs.nth(0).fill(username)
+    inputs.nth(1).fill(password)
 
     # 点击自定义 checkbox
     checkbox = page.locator('div.auth-captcha-inner[role="checkbox"]')
     checkbox.click()
     time.sleep(1)
 
-    # 等待勾选状态出现
+    # 等待勾选状态
     page.wait_for_selector('div.auth-captcha-checkbox.checked', timeout=5000)
     log("验证勾选完成")
 
@@ -79,45 +80,49 @@ with sync_playwright() as p:
         page.screenshot(path=f"project_{idx+1}_01_enter.png")
 
         # --- 读取剩余时间 ---
+        remaining = None
         try:
             expires_el = page.locator('text=Expires in').locator('xpath=following-sibling::*[1]')
-            expires_text = expires_el.inner_text()
+            expires_text = expires_el.inner_text(timeout=5000)
             remaining = parse_expires_minutes(expires_text)
             log(f"剩余时间: {expires_text} ({remaining} 分钟)")
         except Exception as e:
-            log(f"无法读取剩余时间: {e}，跳过此项目")
-            page.screenshot(path=f"project_{idx+1}_error.png")
-            continue
+            log(f"无法读取剩余时间: {e}")
 
-        # --- 续期（仅剩余 ≤120 分钟时） ---
-        if remaining <= 120:
-            log("剩余时间不足2h，尝试续期...")
+        # --- 判断是否需要续期 ---
+        # 情况1：读取到剩余时间且 ≤120 分钟
+        # 情况2：读取失败（可能已关机到期），也尝试续期
+        should_renew = (remaining is not None and remaining <= 120) or (remaining is None)
+
+        if should_renew:
+            log("尝试续期...")
             try:
                 renew_btn = page.locator('button:has-text("Renew")')
-                if renew_btn.is_visible():
+                if renew_btn.is_visible(timeout=3000):
                     renew_btn.click()
                     time.sleep(2)
                     confirm = page.locator('button:has-text("Confirm")')
-                    if confirm.is_visible():
+                    if confirm.is_visible(timeout=3000):
                         confirm.click()
                         time.sleep(2)
                     log("续期成功")
                 else:
-                    log("续期按钮不可见，跳过")
+                    log("续期按钮不可见，可能尚未到续期窗口期")
             except PlaywrightTimeout:
                 log("续期操作超时")
             page.screenshot(path=f"project_{idx+1}_02_after_renew.png")
         else:
             log(f"剩余时间充足（{remaining}min），无需续期")
 
-        # --- 开机（无论是否续期都检查） ---
+        # --- 开机（每次都检查） ---
+        log("检查开机状态...")
         try:
             start_btn = page.locator('button:has-text("Start")')
-            if start_btn.is_visible():
+            if start_btn.is_visible(timeout=3000):
                 start_btn.click()
                 time.sleep(2)
                 confirm = page.locator('button:has-text("Confirm")')
-                if confirm.is_visible():
+                if confirm.is_visible(timeout=3000):
                     confirm.click()
                     time.sleep(3)
                 log("开机成功")
