@@ -44,7 +44,6 @@ def run(playwright):
         log("正在访问项目面板...")
         page.goto("https://dash.aclclouds.com/projects", timeout=60000)
         page.wait_for_timeout(5000)
-        page.screenshot(path="01_projects.png", full_page=True)
 
         # ============ 2. 列表页处理暂停的服务器 ============
         try:
@@ -56,8 +55,9 @@ def run(playwright):
                     reactiver_btns.nth(i).click()
                     page.wait_for_timeout(3000)
                     log(f"第 {i+1} 个服务器已激活")
-                page.screenshot(path="02_after_reactiver.png", full_page=True)
                 page.wait_for_timeout(3000)
+            else:
+                log("无暂停服务器")
         except PlaywrightTimeout:
             log("激活操作超时")
 
@@ -76,20 +76,18 @@ def run(playwright):
         log(f"找到 {len(hrefs)} 个服务器")
 
         if len(hrefs) == 0:
-            log("未找到任何服务器，Cookie 可能已过期")
-            page.screenshot(path="error_no_server.png", full_page=True)
+            log("未找到任何服务器，Cookie 可能已过期，请更新")
             return
 
         # ============ 4. 逐个处理服务器 ============
         for idx, href in enumerate(hrefs):
             url = href if href.startswith("http") else f"https://dash.aclclouds.com{href}"
-            log(f"--- 处理第 {idx+1} 个服务器: {url} ---")
+            log(f"--- 处理第 {idx+1} 个服务器 ---")
 
             page.goto(url, timeout=60000)
             page.wait_for_timeout(3000)
-            page.screenshot(path=f"server_{idx+1}_01_enter.png", full_page=True)
 
-            # --- 情况A：详情页显示暂停，有 "Renouveler maintenant" ---
+            # --- 情况A：详情页显示暂停，有 Renouveler maintenant ---
             try:
                 suspended_btn = page.locator('button:has-text("Renouveler maintenant")')
                 if suspended_btn.is_visible(timeout=3000):
@@ -112,9 +110,9 @@ def run(playwright):
             except Exception as e:
                 log(f"无法读取剩余时间: {e}")
 
-            # --- 情况B：剩余 ≤2h 时续期 ---
-            if remaining is not None and remaining <= 120:
-                log("剩余时间不足2h，尝试续期...")
+            # --- 情况B：剩余 ≤150 分钟时续期（含延时缓冲） ---
+            if remaining is not None and remaining <= 150:
+                log("剩余时间不足2.5h，尝试续期...")
                 try:
                     renew_btn = page.locator('button:has-text("Renouveler")').first
                     if renew_btn.is_visible(timeout=3000):
@@ -126,7 +124,7 @@ def run(playwright):
                             page.wait_for_timeout(2000)
                         log("续期成功")
                     else:
-                        log("续期按钮不可见")
+                        log("续期按钮不可见，未到续期窗口期")
                 except PlaywrightTimeout:
                     log("续期操作超时")
             elif remaining is None:
@@ -134,33 +132,24 @@ def run(playwright):
             else:
                 log(f"剩余时间充足（{remaining}min），无需续期")
 
-            page.screenshot(path=f"server_{idx+1}_02_after_renew.png", full_page=True)
-
             # --- 开机检查 ---
-            log("检查开机状态...")
-            page.wait_for_timeout(2000)
             try:
                 start_btn = page.locator('button:has-text("Start")').first
                 if start_btn.is_visible(timeout=5000):
                     start_btn.scroll_into_view_if_needed()
                     page.wait_for_timeout(1000)
                     start_btn.click()
-                    log("已点击 Start 按钮，等待开机...")
-                    page.wait_for_timeout(5000)
-                    log("开机完成")
+                    log("开机成功")
+                    page.wait_for_timeout(3000)
                 else:
-                    log("Start 按钮不可见，服务器可能已在运行")
+                    log("服务器已在运行")
             except PlaywrightTimeout:
                 log("开机操作超时")
-
-            page.screenshot(path=f"server_{idx+1}_03_final.png", full_page=True)
-            page.wait_for_timeout(2000)
 
         log("全部服务器处理完成")
 
     except Exception as e:
         log(f"执行过程中发生错误: {e}")
-        page.screenshot(path="error_page.png", full_page=True)
     finally:
         browser.close()
 
