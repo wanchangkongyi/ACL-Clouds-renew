@@ -33,10 +33,11 @@ jobs:
           ACL_COOKIES: ${{ secrets.ACL_COOKIES }}
         run: python renew.py
 
-      - name: Upload Screenshots
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: Screenshots-${{ github.run_number }}
-          path: "*.png"
-          retention-days: 1
+      - name: Keep Repo Active
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          echo "Last run: $(date '+%Y-%m-%d %H:%M:%S')" > keep_alive.txt
+          git add keep_alive.txt
+          git diff --staged --quiet || git commit -m "chore: keep alive $(date '+%Y-%m-%d')"
+          git push
